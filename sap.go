@@ -27,13 +27,31 @@ type axisPoint struct {
 	value float32
 }
 
+// axisPointList implements sort.Interface
+type axisPointList []axisPoint
+
+// Len implements sort.Interface.Len
+func (a axisPointList) Len() int {
+	return len(a)
+}
+
+// Less implements sort.Interface.Less
+func (a axisPointList) Less(i, j int) bool {
+	return a[i].value < a[j].value
+}
+
+// Swap implements sort.Interface.Swap
+func (a axisPointList) Swap(i, j int) {
+	a[i], a[j] = a[j], a[i]
+}
+
 // axis stores a sorted set of points along a one-dimensional line.
 type axis struct {
-	data  []axisPoint
+	data  axisPointList
 	value func(*Point) float32
 
-	generatedIndex bool
-	indexed        map[*Point]int
+	sorted  bool
+	indexed map[*Point]int
 }
 
 // newAxis returns an axis created with the provided capacity. It is assumed
@@ -41,7 +59,7 @@ type axis struct {
 // any other operations are done on it.
 func newAxis(capacity uint, value func(*Point) float32) *axis {
 	return &axis{
-		data:  make([]axisPoint, capacity),
+		data:  make([]axisPoint, 0, capacity),
 		value: func(p *Point) float32 { return p.y },
 	}
 }
@@ -49,15 +67,24 @@ func newAxis(capacity uint, value func(*Point) float32) *axis {
 // IndexFor returns the index of the point on the axis. It's assumed that the
 // point will exist in the axis.
 func (a *axis) IndexFor(p *Point) int {
-	if !a.generatedIndex {
-		a.indexed = map[*Point]int{}
-		for i, pt := range a.data {
-			a.indexed[pt.p] = i
-		}
-		a.generatedIndex = true
+	if !a.sorted {
+		a.runSort()
 	}
 
 	return a.indexed[p]
+}
+
+// runSort sorts the data points stored in the axis and generates an index
+// for them.
+func (a *axis) runSort() {
+	sort.Sort(a.data)
+
+	a.indexed = map[*Point]int{}
+	for i, pt := range a.data {
+		a.indexed[pt.p] = i
+	}
+
+	a.sorted = true
 }
 
 // ValueFor returns the point's coordinate on that axis.
@@ -67,20 +94,11 @@ func (a *axis) ValueFor(p *Point) float32 {
 
 // Insert adds a new point to the axis.
 func (a *axis) Insert(p *Point) {
-	val := a.value(p)
-	i := sort.Search(len(a.data), func(i int) bool {
-		if a.data[i].p == nil {
-			return true
-		}
+	if a.sorted {
+		panic("Cannot add items to the index after starting to use it.")
+	}
 
-		return a.data[i].value >= val
-	})
-
-	// We find the index the item is going to be inserted at, then we shift
-	// everything over to make room for it. The list is filled from the left,
-	// and we know that we'll never go over capacity.
-	copy(a.data[i+1:], a.data[i:])
-	a.data[i] = axisPoint{p: p, value: a.value(p)}
+	a.data = append(a.data, axisPoint{p: p, value: a.value(p)})
 }
 
 type Axdex struct {
@@ -129,7 +147,7 @@ func (a *axResults) Viable(p *Point) (viable bool, distance float32) {
 // HasPotential returns true if the difference between the center point and
 // another point, given as delta, is less than the provided max and if it
 // could possibly yield a viable point. Once this returns false for an axis
-// points further out on that access will not have potential either.
+// points "further out" on that axis will not have potential either.
 func (a *axResults) HasPotential(delta, max float32) bool {
 	if delta > max || -delta > max {
 		return false
