@@ -1,58 +1,107 @@
 package rbench
 
 import (
+	"fmt"
 	"sort"
 )
 
-type Axis struct {
-	data    []*Point
-	indexed map[*Point]int
-	value   func(*Point) float32
+// Point represents a point in two-dimensional space.
+type Point struct{ x, y float32 }
+
+// DistanceToSqr returns the squared distance to the `other` point.
+func (p *Point) DistanceToSqr(other *Point) float32 {
+	dx, dy := (p.x - other.x), (p.y - other.y)
+	return dx*dx + dy*dy
 }
 
-func (a *Axis) IndexFor(p *Point) int {
+// String returns a textual representation of the point.
+func (p *Point) String() string {
+	return fmt.Sprintf("(%.4f, %.4f)", p.x, p.y)
+}
+
+// axisPoint is used for internal recordkeeping of points within an axis.
+// It's a pair of the point and the value of that point's coordinate on
+// the related axis.
+type axisPoint struct {
+	p     *Point
+	value float32
+}
+
+// axis stores a sorted set of points along a one-dimensional line.
+type axis struct {
+	data  []axisPoint
+	value func(*Point) float32
+
+	generatedIndex bool
+	indexed        map[*Point]int
+}
+
+// newAxis returns an axis created with the provided capacity. It is assumed
+// that the axis will be filled with exactly `capacity` points before
+// any other operations are done on it.
+func newAxis(capacity uint, value func(*Point) float32) *axis {
+	return &axis{
+		data:  make([]axisPoint, capacity),
+		value: func(p *Point) float32 { return p.y },
+	}
+}
+
+// IndexFor returns the index of the point on the axis. It's assumed that the
+// point will exist in the axis.
+func (a *axis) IndexFor(p *Point) int {
+	if !a.generatedIndex {
+		a.indexed = map[*Point]int{}
+		for i, pt := range a.data {
+			a.indexed[pt.p] = i
+		}
+		a.generatedIndex = true
+	}
+
 	return a.indexed[p]
 }
 
-func (a *Axis) ValueFor(p *Point) float32 {
+// ValueFor returns the point's coordinate on that axis.
+func (a *axis) ValueFor(p *Point) float32 {
 	return a.value(p)
 }
 
-func (a *Axis) Insert(p *Point) {
+// Insert adds a new point to the axis.
+func (a *axis) Insert(p *Point) {
 	val := a.value(p)
 	i := sort.Search(len(a.data), func(i int) bool {
-		if a.data[i] == nil {
+		if a.data[i].p == nil {
 			return true
 		}
 
-		return a.value(a.data[i]) >= val
+		return a.data[i].value >= val
 	})
 
 	// We find the index the item is going to be inserted at, then we shift
 	// everything over to make room for it. The list is filled from the left,
 	// and we know that we'll never go over capacity.
 	copy(a.data[i+1:], a.data[i:])
-	a.data[i] = p
-
-	a.indexed[p] = i
+	a.data[i] = axisPoint{p: p, value: a.value(p)}
 }
 
 type Axdex struct {
-	axes []*Axis
+	axes []*axis
 }
 
-// Creates a new axis-based index with a capacity.
+// NewAxdex returns a new axis-based index with the provided capacity.
+// It's assumed that you will insert exactly `capacity` points before
+// running queries against the index.
 func NewAxdex(capacity uint) *Axdex {
 	a := &Axdex{
-		axes: []*Axis{
-			&Axis{data: make([]*Point, capacity), indexed: map[*Point]int{}, value: func(p *Point) float32 { return p.x }},
-			&Axis{data: make([]*Point, capacity), indexed: map[*Point]int{}, value: func(p *Point) float32 { return p.y }},
+		axes: []*axis{
+			newAxis(capacity, func(p *Point) float32 { return p.x }),
+			newAxis(capacity, func(p *Point) float32 { return p.y }),
 		},
 	}
 
 	return a
 }
 
+// Insert adds a new point into the Axdex.
 func (a *Axdex) Insert(p *Point) {
 	for _, axis := range a.axes {
 		axis.Insert(p)
@@ -66,17 +115,10 @@ type axResults struct {
 	count int
 }
 
-func abs(x float32) float32 {
-	if x < 0 {
-		return -x
-	}
-	return x
-}
-
 // Viable returns true if the provided value could possible be a coordinate
 // of a nearest neighbor with coordinate src.
 func (a *axResults) Viable(p *Point) (viable bool, distance float32) {
-	d := p.DistanceTo(*a.src)
+	d := p.DistanceToSqr(a.src)
 	if a.data[a.count-1] == nil {
 		return true, d
 	}
@@ -84,14 +126,24 @@ func (a *axResults) Viable(p *Point) (viable bool, distance float32) {
 	return d < a.worst, d
 }
 
-func (a *axResults) HasPotential(src, pt float32) bool {
+// HasPotential returns true if the difference between the center point and
+// another point, given as delta, is less than the provided max and if it
+// could possibly yield a viable point. Once this returns false for an axis
+// points further out on that access will not have potential either.
+func (a *axResults) HasPotential(delta, max float32) bool {
+	if delta > max || -delta > max {
+		return false
+	}
+
 	if a.data[a.count-1] == nil {
 		return true
 	}
 
-	return abs(src-pt) < a.worst
+	return delta*delta < a.worst
 }
 
+// GetResult returns a list of results from the list. It will returns as many
+// non-nil results as it can, up to the provided count.
 func (a *axResults) GetResult() []*Point {
 	var i int
 	for i < a.count && a.data[i] != nil {
@@ -113,7 +165,7 @@ func (a *axResults) Insert(p *Point) {
 			break
 		}
 
-		if a.src.DistanceTo(*p) < a.src.DistanceTo(*a.data[i]) {
+		if a.src.DistanceToSqr(p) < a.src.DistanceToSqr(a.data[i]) {
 			copy(a.data[i+1:], a.data[i:])
 			a.data[i] = p
 			break
@@ -121,30 +173,17 @@ func (a *axResults) Insert(p *Point) {
 	}
 
 	if a.data[a.count-1] != nil {
-		a.worst = a.data[a.count-1].DistanceTo(*a.src)
+		a.worst = a.data[a.count-1].DistanceToSqr(a.src)
 	}
 }
 
-type axisTracker struct {
-	left, right int
-	value       float32
-}
-
-func (a *Axdex) NearestN(p *Point, n int) []*Point {
+// NearestN returns up the `n` nearest neighbors of the point, with a `max`
+// search distance.
+func (a *Axdex) NearestN(p *Point, n int, max float32) []*Point {
 	results := &axResults{src: p, data: make([]*Point, n), count: n}
 	results.Insert(p)
 
-	ats := make([]axisTracker, len(a.axes))
-	for i, axis := range a.axes {
-		idx := axis.IndexFor(p)
-		ats[i] = axisTracker{
-			left:  idx - 1,
-			right: idx + 1,
-			value: axis.ValueFor(p),
-		}
-	}
-
-	for i, axis := range a.axes {
+	for _, axis := range a.axes {
 		idx := axis.IndexFor(p)
 		var (
 			left  = idx - 1
@@ -154,6 +193,9 @@ func (a *Axdex) NearestN(p *Point, n int) []*Point {
 
 		for {
 			var (
+				leftP  axisPoint
+				rightP axisPoint
+
 				leftViable  = false
 				rightViable = false
 
@@ -162,37 +204,39 @@ func (a *Axdex) NearestN(p *Point, n int) []*Point {
 			)
 
 			if left >= 0 {
-				leftViable, leftDistance = results.Viable(axis.data[left])
+				leftP = axis.data[left]
+				leftViable, leftDistance = results.Viable(leftP.p)
 				if !leftViable {
 					left--
 				}
 			}
 			if right < len(axis.data) {
-				rightViable, rightDistance = results.Viable(axis.data[right])
+				rightP = axis.data[right]
+				rightViable, rightDistance = results.Viable(rightP.p)
 				if !rightViable {
 					right++
 				}
 			}
 
 			if leftViable && (!rightViable || leftDistance < rightDistance) {
-				results.Insert(axis.data[left])
+				results.Insert(leftP.p)
 				left--
 			} else if rightViable {
-				results.Insert(axis.data[right])
+				results.Insert(rightP.p)
 				right++
 			}
 
-			leftPotential := left >= 0 && results.HasPotential(value, axis.ValueFor(axis.data[left]))
-			rightPotential := right < len(axis.data) && results.HasPotential(value, axis.ValueFor(axis.data[right]))
+			leftPotential := left >= 0 && results.HasPotential(value-leftP.value, max)
+			rightPotential := right < len(axis.data) && results.HasPotential(value-rightP.value, max)
 			if !(leftPotential || rightPotential) {
 				break
 			}
 
 			if !leftPotential {
-				ats[i].left = -1
+				left = -1
 			}
 			if !rightPotential {
-				ats[i].right = len(axis.data)
+				right = len(axis.data)
 			}
 		}
 	}

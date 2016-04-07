@@ -5,7 +5,8 @@ import (
 	"math/rand"
 	"sort"
 	"testing"
-	// "github.com/stretchr/testify/assert"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestTreeNearestEmpty(t *testing.T) {
@@ -13,21 +14,28 @@ func TestTreeNearestEmpty(t *testing.T) {
 }
 
 func TestTreeNearest(t *testing.T) {
-	inc := 0.01
+	count := 100
 	delta := (0.000001)
-	tr := NewAxdex(uint(1 / inc))
+	tr := NewAxdex(uint(count))
 
-	previous := []*Point{}
-	for i := float64(0); i < 1; i += inc {
-		p := &Point{float32(i), float32(math.Sin(i * math.Pi))}
-		previous = append(previous, p)
+	points := []*Point{}
+	for i := 0; i < count; i++ {
+		p := &Point{rand.Float32(), rand.Float32()}
+		points = append(points, p)
 		tr.Insert(p)
 	}
 
+	for _, axis := range tr.axes {
+		for i := 1; i < len(axis.data); i++ {
+			assert.True(t, axis.ValueFor(axis.data[i].p) >= axis.ValueFor(axis.data[i-1].p))
+			assert.Equal(t, i, axis.IndexFor(axis.data[i].p))
+		}
+	}
+
 	testLast := 5
-	for _, p := range previous {
-		n := tr.NearestN(p, testLast)
-		pdl := pointDistanceList{center: p, list: previous}
+	for _, p := range points {
+		n := tr.NearestN(p, testLast, 0.25)
+		pdl := pointDistanceList{center: p, list: points}
 		sort.Sort(pdl)
 
 		list := pdl.list[:testLast]
@@ -63,7 +71,7 @@ func benchTreeNearest(b *testing.B, n int) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		t.NearestN(&Point{0.5, 0.5}, 3)
+		t.NearestN(&Point{0.5, 0.5}, 3, 0.25)
 	}
 }
 
@@ -76,7 +84,7 @@ func benchTreeNearestWorstCase(b *testing.B, n int) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		t.NearestN(&Point{0.5, 0.5}, 3)
+		t.NearestN(&Point{0.5, 0.5}, 3, 0.25)
 	}
 }
 

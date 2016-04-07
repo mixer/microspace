@@ -1,21 +1,9 @@
 package rbench
 
 import (
-	// "math"
-	// "sort"
-	"fmt"
+// "math"
+// "sort"
 )
-
-type Point struct{ x, y float32 }
-
-func (p Point) DistanceTo(other Point) float32 {
-	dx, dy := (p.x - other.x), (p.y - other.y)
-	return dx*dx + dy*dy
-}
-
-func (p Point) String() string {
-	return fmt.Sprintf("(%.4f, %.4f)", p.x, p.y)
-}
 
 // type Tree struct {
 // 	// The data is a list of buckets of points. The top left corner of the
@@ -93,7 +81,7 @@ func (p pointDistanceList) Less(i, j int) bool {
 }
 
 func (p pointDistanceList) PointsLess(i, j *Point) bool {
-	return i.DistanceTo(*p.center) <= j.DistanceTo(*p.center)
+	return i.DistanceToSqr(p.center) <= j.DistanceToSqr(p.center)
 }
 
 func (p pointDistanceList) Swap(i, j int) {
