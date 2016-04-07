@@ -9,13 +9,26 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestTreeNearestEmpty(t *testing.T) {
-	// assert.Equal(t, []Point{}, generateTree(0).NearestN(&Point{0, 0}, 5))
+type pointDistanceList struct {
+	center *Point
+	list   []*Point
+}
+
+func (p pointDistanceList) Len() int {
+	return len(p.list)
+}
+
+func (p pointDistanceList) Less(i, j int) bool {
+	return p.list[i].DistanceToSqr(p.center) < p.list[j].DistanceToSqr(p.center)
+}
+
+func (p pointDistanceList) Swap(i, j int) {
+	p.list[i], p.list[j] = p.list[j], p.list[i]
 }
 
 func TestTreeNearest(t *testing.T) {
 	count := 100
-	delta := (0.000001)
+	delta := 0.000001
 	tr := NewAxdex(uint(count))
 
 	points := []*Point{}
@@ -78,7 +91,7 @@ func benchTreeNearest(b *testing.B, n int) {
 func benchTreeNearestWorstCase(b *testing.B, n int) {
 	t := NewAxdex(uint(n))
 	for k := 0; k < n; k++ {
-		t.Insert(&Point{0.5, 0.5})
+		t.Insert(&Point{0.6, 0.6})
 	}
 
 	b.ResetTimer()

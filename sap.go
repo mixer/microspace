@@ -178,11 +178,16 @@ func (a *axResults) Insert(p *Point) {
 }
 
 // NearestN returns up the `n` nearest neighbors of the point, with a `max`
-// search distance.
+// search distance. It's assumed that p is in the index!
 func (a *Axdex) NearestN(p *Point, n int, max float32) []*Point {
 	results := &axResults{src: p, data: make([]*Point, n), count: n}
 	results.Insert(p)
 
+	// Warning: logic ahead!
+	// The general algorithm is this. We loop through every axis, starting
+	// at the point in the sorted list of points on that axis and expanding
+	// outwards. As we expand, we look for points that are near to the
+	// center point, and keep track of the n nearest.
 	for _, axis := range a.axes {
 		idx := axis.IndexFor(p)
 		var (
@@ -191,33 +196,58 @@ func (a *Axdex) NearestN(p *Point, n int, max float32) []*Point {
 			value = axis.ValueFor(p)
 		)
 
+		// At each of these loops, we expand the `left` and/or the `right`
+		// outwards. We do this until the 'distance' along the axis of each
+		// the left and right pointer is greater than the worst distance
+		// in our results. When this point is reached it's impossible that
+		// we'll find any more viable points along this axis, so we exit.
+		//
+		// The `left` pointer is set to -1 when it's out of potential points.
+		// The `right` pointer is set to len(axis.data) when it's out of points.
 		for {
 			var (
+				// leftP/rightP are the point and axis position associated with
+				// that point, from the left/right index.
 				leftP  axisPoint
 				rightP axisPoint
 
+				// Viable is set to true if the point at that distance is
+				// closer than the worst point in the results set.
 				leftViable  = false
 				rightViable = false
 
+				// Euclidean distance squared of the provided point to the
+				// center point.
 				leftDistance  = float32(0)
 				rightDistance = float32(0)
 			)
 
-			if left >= 0 {
+			if left >= 0 { // if we might have something to the left of the point
 				leftP = axis.data[left]
 				leftViable, leftDistance = results.Viable(leftP.p)
+
+				// This point wasn't viable, but we might have something
+				// further on! Decrement the left pointer.
 				if !leftViable {
 					left--
 				}
 			}
-			if right < len(axis.data) {
+
+			if right < len(axis.data) { // if we might have something to the left of the point
 				rightP = axis.data[right]
 				rightViable, rightDistance = results.Viable(rightP.p)
+
+				// This point wasn't viable, but we might have something
+				// further on! Increment the right pointer.
 				if !rightViable {
 					right++
 				}
 			}
 
+			// At this point we know whether each point is viable and its
+			// distance to the center point. Chose either the only viable
+			// point, or the point closer to the center, and insert it in
+			// the results.
 			if leftViable && (!rightViable || leftDistance < rightDistance) {
 				results.Insert(leftP.p)
 				left--
@@ -226,12 +256,19 @@ func (a *Axdex) NearestN(p *Point, n int, max float32) []*Point {
 				right++
 			}
 
+			// Now, we've updated the left and right pointers to the next
+			// position. We check to see if either direction has the
+			// potential to contain more viable points. If not,
+			// return from the loop.
 			leftPotential := left >= 0 && results.HasPotential(value-leftP.value, max)
 			rightPotential := right < len(axis.data) && results.HasPotential(value-rightP.value, max)
 			if !(leftPotential || rightPotential) {
 				break
 			}
 
+			// For directions that don't have potential, set them to their
+			// terminated values so that we don't have to keep calculating
+			// distances for them.
 			if !leftPotential {
 				left = -1
 			}
