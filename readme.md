@@ -6,7 +6,7 @@ Microspace is a spatial index that's optimized for very fast building and neares
 
  - Inserting `n` points ultimately runs in `O(n log n)` time.
  - In the worse case, querying for the nearest neighbor runs in `O(n)` time.
- - But in practice it runs much faster. In the benchmark random distribution, querying for random neighbors in a set size of 10000 took ~10 nanosecond longer than querying in a set size of 10.
+ - But in practice it runs much faster. In the benchmark random distribution, querying for nearest neighbors in a set size of 10000 took ~10 nanoseconds longer than querying in a set size of 10.
 
 ```
 # Generating a tree with `n` elements:
