@@ -40,11 +40,9 @@ func TestIndexNearest(t *testing.T) {
 
 	finalizeIndex(tr)
 
-	for _, axis := range tr.axes {
-		for i := 1; i < len(axis.data); i++ {
-			assert.True(t, axis.ValueFor(axis.data[i].p) >= axis.ValueFor(axis.data[i-1].p))
-			assert.Equal(t, i, axis.IndexFor(axis.data[i].p))
-		}
+	for i := 1; i < len(tr.axis.data); i++ {
+		assert.True(t, tr.axis.ValueFor(tr.axis.data[i].p) >= tr.axis.ValueFor(tr.axis.data[i-1].p))
+		assert.Equal(t, i, tr.axis.IndexFor(tr.axis.data[i].p))
 	}
 
 	testLast := 5
@@ -67,9 +65,7 @@ func TestIndexNearest(t *testing.T) {
 }
 
 func finalizeIndex(t *Axdex) {
-	for _, axis := range t.axes {
-		axis.runSort()
-	}
+	t.axis.runSort()
 }
 
 func generateIndex(n int) *Axdex {
