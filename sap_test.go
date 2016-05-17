@@ -1,4 +1,4 @@
-package rbench
+package microspace
 
 import (
 	"math"
@@ -57,7 +57,7 @@ func TestIndexNearest(t *testing.T) {
 		}
 
 		for k := 0; k < testLast; k++ {
-			if math.Abs(float64(list[k].x-n[k].x)) > delta || math.Abs(float64(list[k].y-n[k].y)) > delta {
+			if math.Abs(float64(list[k].X-n[k].X)) > delta || math.Abs(float64(list[k].Y-n[k].Y)) > delta {
 				t.Fatalf("Invalid nearest for point %s:\n\tResults:   %s\n\tExpecting: %s\n\tGot: %s, expected %s\n", p, n, list, n[k], list[k])
 			}
 		}

@@ -1,22 +1,16 @@
-package rbench
+package microspace
 
-import (
-	"fmt"
-	"sort"
-)
+import "sort"
 
-// Point represents a point in two-dimensional space.
-type Point struct{ x, y float32 }
-
-// DistanceToSqr returns the squared distance to the `other` point.
-func (p *Point) DistanceToSqr(other *Point) float32 {
-	dx, dy := (p.x - other.x), (p.y - other.y)
-	return dx*dx + dy*dy
-}
-
-// String returns a textual representation of the point.
-func (p *Point) String() string {
-	return fmt.Sprintf("(%.4f, %.4f)", p.x, p.y)
+// Index describes a spatial index that can look
+// up a point's nearest neighbors.
+type Index interface {
+	// NearestN returns up the `n` nearest neighbors of the point, with
+	// a `max` search distance. `n` May be set to -1 to search for all
+	// neighbors in the distance.8
+	NearestN(p *Point, n int, max float32) []*Point
+	// Points returns all points contained in the spatial index.
+	Points() []*Point
 }
 
 // axisPoint is used for internal recordkeeping of points within an axis.
@@ -60,7 +54,7 @@ type axis struct {
 func newAxis(capacity uint, value func(*Point) float32) *axis {
 	return &axis{
 		data:  make([]axisPoint, 0, capacity),
-		value: func(p *Point) float32 { return p.y },
+		value: func(p *Point) float32 { return p.Y },
 	}
 }
 
@@ -102,7 +96,8 @@ func (a *axis) Insert(p *Point) {
 }
 
 type Axdex struct {
-	axis *axis
+	axis   *axis
+	points []*Point
 }
 
 // NewAxdex returns a new axis-based index with the provided capacity.
@@ -110,15 +105,23 @@ type Axdex struct {
 // running queries against the index.
 func NewAxdex(capacity uint) *Axdex {
 	a := &Axdex{
-		axis: newAxis(capacity, func(p *Point) float32 { return p.x }),
+		axis: newAxis(capacity, func(p *Point) float32 { return p.X }),
 	}
 
 	return a
 }
 
-// Insert adds a new point into the Axdex.
+var _ Index = new(Axdex)
+
+// Insert implements Index.Insert
 func (a *Axdex) Insert(p *Point) {
 	a.axis.Insert(p)
+	a.points = append(a.points, p)
+}
+
+// Points implements Index.Points
+func (a *Axdex) Points() []*Point {
+	return a.points
 }
 
 type axResults struct {
@@ -193,6 +196,10 @@ func (a *axResults) Insert(p *Point) {
 // NearestN returns up the `n` nearest neighbors of the point, with a `max`
 // search distance. It's assumed that p is in the index!
 func (a *Axdex) NearestN(p *Point, n int, max float32) []*Point {
+	if n == -1 {
+		n = len(a.points)
+	}
+
 	results := &axResults{src: p, data: make([]*Point, n), count: n}
 	results.Insert(p)
 
